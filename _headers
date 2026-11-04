@@ -1,0 +1,9 @@
+# The app (another origin) reads these, so allow cross-origin reads.
+/*
+  Access-Control-Allow-Origin: *
+/feed.xml
+  Cache-Control: public, max-age=60
+/sources.json
+  Cache-Control: public, max-age=300
+/images/*
+  Cache-Control: public, max-age=31536000, immutable

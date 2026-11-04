@@ -1,0 +1,64 @@
+name: Update feed
+
+on:
+  schedule:
+    - cron: '17 * * * *'  # hourly; :17 avoids GitHub's busy top of the hour
+  workflow_dispatch:
+    inputs:
+      accounts:
+        description: 'Comma-separated Instagram accounts (empty: all)'
+        required: false
+        default: ''
+
+# Runs queue instead of overlapping (the Worker batches user refreshes).
+concurrency:
+  group: update-feed
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  update-feed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache RSS-Bridge
+        id: cache-rss-bridge
+        uses: actions/cache@v4
+        with:
+          path: /tmp/rss-bridge
+          key: rss-bridge-latest
+
+      - name: Fetch RSS-Bridge if not cached
+        if: steps.cache-rss-bridge.outputs.cache-hit != 'true'
+        run: git clone --depth 1 https://github.com/RSS-Bridge/rss-bridge.git /tmp/rss-bridge
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, simplexml, curl, intl, dom
+          coverage: none
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: python -m pip install -r requirements.txt
+
+      - name: Build feed
+        env:
+          ACCOUNTS: ${{ inputs.accounts }}
+          RSS_BRIDGE_DIR: /tmp/rss-bridge
+        run: ./build_feed.sh
+
+      - name: Publish to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 pages deploy site --project-name top-bulten-feed --branch main --commit-dirty=true
